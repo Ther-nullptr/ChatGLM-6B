@@ -1,4 +1,5 @@
 import os
+import torch
 import platform
 import argparse
 from transformers import AutoTokenizer, AutoModel
@@ -28,6 +29,8 @@ if __name__ == '__main__':
         query = input("\n用户：")
         if query == "stop":
             break
+        if query == 'exit':
+            break
         if query == "clear":
             history = []
             command = 'cls' if os_name == 'Windows' else 'clear'
@@ -36,12 +39,18 @@ if __name__ == '__main__':
             continue
         
         if args.profile:
-            with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True, profile_memory=True) as prof:
-                with record_function("model_inference"):
-                    response, history = model.chat(tokenizer, query, history=history)
-            print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+            torch.cuda.synchronize()
+            starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+            starter.record()
+            response, history = model.chat(tokenizer, query, history=history)
+            ender.record()
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender)
+            print(f'{args.presicion} inference time: {curr_time:.2f} ms')
+            
             # write to file
-            prof.export_chrome_trace("trace.json")
+            # prof.export_chrome_trace("trace.json")
         else:
             response, history = model.chat(tokenizer, query, history=history)
-        print(f"ChatGLM-6B：{response}")
+        print(f"ChatGLM-6B response：{response}")
+        print(f"ChatGLM-6B history：{history}")
